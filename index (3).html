@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>تحديث3.1</title>
+    
+
+  </head>
+    
+  <body>
+  <!doctype html>
+
+<html lang="ar">
+
+<head>
+
+<meta charset="utf-8">
+
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+<title>RunningGame</title>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+
+<style>
+
+html,body{height:100%;margin:0;background:#111;font-family:system-ui,Arial;direction:rtl;}
+
+#game-container{width:100%;height:100vh;overflow:hidden;position:relative;background:#fff;}
+
+.overlay-btn{display:inline-block;padding:12px 22px;margin:8px;font-size:18px;border:none;border-radius:10px;cursor:pointer;color:#fff;background:#1e90ff;box-shadow:0 6px 18px rgba(0,0,0,0.35);}
+
+.overlay-btn.secondary{background:#ff7a00;}
+
+.overlay-btn.ghost{background:transparent;color:#fff;border:2px solid rgba(255,255,255,0.25);}
+
+.overlay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);min-width:320px;padding:22px;border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.45));color:#fff;text-align:center;z-index:2000;box-shadow:0 12px 36px rgba(0,0,0,0.6);pointer-events:auto;}
+
+.overlay h1{margin:6px 0 12px;font-size:28px;letter-spacing:1px;}
+
+#countdownOverlay{font-size:64px;padding:30px 18px;background:rgba(0,0,0,0.6);border-radius:12px;display:none;z-index:2500;}
+
+#gameOverOverlay .score{font-size:20px;color:#ffdede;margin-bottom:12px;}
+
+#nameInputBox{display:none;margin-top:10px;}
+
+#nameInputBox input{padding:6px 12px;font-size:16px;border-radius:6px;border:1px solid #aaa;width:70%;margin-bottom:6px;}
+
+#leaderboardBox{position:absolute;right:12px;top:80px;width:260px;max-height:60vh;overflow:auto;background:rgba(255,255,255,0.95);color:#000;padding:12px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.25);z-index:5000;display:none;}
+
+#leaderboardBox #closeLeaderboard{position:absolute;top:6px;left:6px;background:#ff4c4c;color:#fff;border:none;font-size:16px;font-weight:bold;border-radius:50%;width:26px;height:26px;cursor:pointer;line-height:20px;}
+
+#hint{position:absolute;left:12px;top:12px;color:#fff;z-index:1200;}
+
+#btnUp,#btnDown{position:absolute;width:60px;height:60px;font-size:28px;border-radius:50%;z-index:1500;background:rgba(255,255,255,0.3);color:#000;border:none;cursor:pointer;display:none;pointer-events:auto;}
+
+#btnUp{right:12px;bottom:120px;}
+
+#btnDown{left:12px;bottom:120px;}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="game-container"></div>
+
+<div id="lobbyOverlay" class="overlay">
+
+  <h1>RunningGame</h1>
+
+  <p>اختبر مهارتك — تجنب العقبات واكسر الأرقام القياسية!</p>
+
+  <button id="startBtn" class="overlay-btn">ابدأ اللعب</button>
+
+  <button id="openLeaderboardLobby" class="overlay-btn secondary">أفضل اللاعبين</button>
+
+</div>
+
+<div id="countdownOverlay" class="overlay"><div id="countdownText">3</div></div>
+
+<div id="gameOverOverlay" class="overlay" style="display:none;">
+
+  <h1>انتهت اللعبة</h1>
+
+  <div class="score" id="finalScoreText">المسافة: 0 م</div>
+
+  <button id="openNameInput" class="overlay-btn">الاسم</button>
+
+  <div id="nameInputBox">
+
+    <input id="playerName" placeholder="ادخل اسمك">
+
+    <button id="saveNameBtn" class="overlay-btn">حفظ</button>
+
+    <button id="cancelNameBtn" class="overlay-btn secondary">إلغاء</button>
+
+  </div>
+
+  <button id="openLeaderboardGameover" class="overlay-btn secondary">أفضل اللاعبين</button>
+
+  <button id="replayBtn" class="overlay-btn ghost" style="color:#000;background:#fff">إعادة اللعب</button>
+
+</div>
+
+<div id="leaderboardBox">
+
+  <button id="closeLeaderboard">×</button>
+
+  <div id="leaderboardContent"></div>
+
+</div>
+
+<div id="hint">اضغط Space أو الشاشة للقفز</div>
+
+<button id="btnUp">⬆</button>
+
+<button id="btnDown">⬇</button>
+
+<script>
+
+const GAME_WIDTH=900,GAME_HEIGHT=450,groundHeight=20;
+
+let game=null,isPlaying=false,playerBody,playerHead,obstacles=[],platforms=[],distance=0,gameOver=false,elapsedAcc=0,highScore=0,nameRegistered=false;
+
+let scoreText,highScoreText;
+
+let obstacleBaseSpeed=200,obstacleSpeed=200;
+
+let leaderboard=JSON.parse(localStorage.getItem("leaderboard"))||[];
+
+let currentPhase='ground';
+
+const config={type:Phaser.AUTO,parent:'game-container',width:GAME_WIDTH,height:GAME_HEIGHT,
+
+scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},
+
+physics:{default:'arcade',arcade:{gravity:{y:1400},debug:false}},
+
+scene:{preload,create,update}};
+
+function preload(){}
+
+function create(){
+
+  this.cameras.main.setBackgroundColor(0xffffff);
+
+  distance=0;elapsedAcc=0;gameOver=false;obstacles=[];platforms=[];isPlaying=false;nameRegistered=false;
+
+  let ground=this.add.tileSprite(GAME_WIDTH/2,GAME_HEIGHT-groundHeight/2,GAME_WIDTH,groundHeight,null);
+
+  this.physics.add.existing(ground,true);
+
+  playerBody=this.add.rectangle(120,GAME_HEIGHT-groundHeight-20,20,40,0x00ff00);
+
+  this.physics.add.existing(playerBody);
+
+  playerBody.body.setCollideWorldBounds(true);
+
+  playerHead=this.add.rectangle(120,GAME_HEIGHT-groundHeight-50,20,20,0x0000ff);
+
+  scoreText=this.add.text(16,16,'المسافة: 0 م',{font:'22px system-ui',fill:'#000'});
+
+  highScoreText=this.add.text(GAME_WIDTH-16,16,'أعلى: '+highScore+' م',{font:'22px system-ui',fill:'#ff5500'}).setOrigin(1,0);
+
+  addObstacle(this,GAME_WIDTH+100);
+
+  this.input.keyboard.on('keydown-SPACE',()=>jump());
+
+  this.input.on('pointerdown',()=>jump());
+
+  document.getElementById('btnUp').onclick=()=>jump();
+
+  document.getElementById('btnDown').onclick=()=>{
+
+    if(!isPlaying||gameOver) return;
+
+    playerBody.body.setVelocityY(400);
+
+  };
+
+}
+
+function jump(){if(!isPlaying||gameOver) return;if(playerBody.body.blocked.down){playerBody.body.setVelocityY(-650);}}
+
+function addObstacle(scene,x){
+
+  let h=Phaser.Math.Between(40,70);
+
+  let color=0xff0000;
+
+  if(currentPhase==='platforms') color=0x0000ff;
+
+  let obs=scene.add.rectangle(x,GAME_HEIGHT-groundHeight-h/2,20,h,color);
+
+  scene.physics.add.existing(obs,true);
+
+  if(currentPhase!=='platforms') obstacles.push(obs); else platforms.push(obs);
+
+}
+
+function update(time,delta){
+
+  if(!isPlaying||gameOver) return;
+
+  elapsedAcc+=delta;
+
+  distance=Math.floor(elapsedAcc/50);
+
+  if(distance>=0&&distance<3000) currentPhase='ground';
+
+  else if(distance>=3000&&distance<5000) currentPhase='flying';
+
+  else if(distance>=7000) currentPhase='platforms';
+
+  let bgColor=0xffffff; let speedMod=0;
+
+  let section=Math.floor(distance/1000);
+
+  if(section%2===1){bgColor=0x000000;speedMod=obstacleBaseSpeed*0.2;}
+
+  else{bgColor=0xffffff;speedMod=-obstacleBaseSpeed*0.2;}
+
+  obstacleSpeed=obstacleBaseSpeed+speedMod+Math.floor(distance/300)*30;
+
+  game.scene.scenes[0].cameras.main.setBackgroundColor(bgColor);
+
+  scoreText.setText('المسافة: '+distance+' م');
+
+  if(distance>highScore){highScore=distance;highScoreText.setText('أعلى: '+highScore+' م');}
+
+  playerHead.x=playerBody.x;playerHead.y=playerBody.y-30;
+
+  obstacles.forEach((o,i)=>{
+
+    o.x-=obstacleSpeed*delta/1000;
+
+    if(Phaser.Geom.Intersects.RectangleToRectangle(playerBody.getBounds(),o.getBounds())) triggerGameOver();
+
+    if(o.x+o.width/2<0){o.destroy();obstacles.splice(i,1);}
+
+  });
+
+  if(obstacles.length===0||obstacles[obstacles.length-1].x<GAME_WIDTH-Phaser.Math.Between(375,400))
+
+    addObstacle(game.scene.scenes[0],GAME_WIDTH+Phaser.Math.Between(0,10));
+
+  if(currentPhase==='platforms'){
+
+    document.getElementById('btnUp').style.display='none';
+
+    document.getElementById('btnDown').style.display='none';
+
+    platforms.forEach((p,i)=>{p.x-=obstacleSpeed*delta/1000;if(p.x+p.width/2<0){p.destroy();platforms.splice(i,1);}});
+
+    if(platforms.length===0||platforms[platforms.length-1].x<GAME_WIDTH-150){
+
+      let h=20; let plat=game.scene.scenes[0].add.rectangle(GAME_WIDTH,GAME_HEIGHT-groundHeight-h/2,Phaser.Math.Between(80,120),20,0x0000ff);
+
+      game.scene.scenes[0].physics.add.existing(plat,true);
+
+      platforms.push(plat);
+
+    }
+
+  }
+
+  if(currentPhase==='flying'){document.getElementById('btnUp').style.display='block';document.getElementById('btnDown').style.display='block';}
+
+}
+
+function triggerGameOver(){gameOver=true; isPlaying=false; nameRegistered=false;document.getElementById('finalScoreText').innerText='المسافة: '+distance+' م';showElement('gameOverOverlay');}
+
+function startWithCountdown(sec){
+
+  const cd=document.getElementById('countdownOverlay');const txt=document.getElementById('countdownText');showElement('countdownOverlay');
+
+  let cur=sec; txt.innerText=cur;
+
+  let t=setInterval(()=>{cur--;if(cur>0){txt.innerText=cur;}else{clearInterval(t);hideElement('countdownOverlay');isPlaying=true;gameOver=false;}},1000);
+
+}
+
+document.getElementById('startBtn').onclick=()=>{
+
+  hideElement('lobbyOverlay');
+
+  if(!game) game=new Phaser.Game(config);
+
+  startWithCountdown(3);
+
+};
+
+document.getElementById('openLeaderboardLobby').onclick=toggleLeaderboard;
+
+document.getElementById('replayBtn').onclick=()=>{
+
+  hideElement('gameOverOverlay');hideElement('nameInputBox');
+
+  const scene=game.scene.scenes[0];scene.scene.restart();
+
+  setTimeout(()=>startWithCountdown(3),400);
+
+};
+
+document.getElementById('openNameInput').onclick=()=>{if(nameRegistered){alert("تم تسجيل اسمك بالفعل ✅");return;}showElement('nameInputBox');};
+
+document.getElementById('cancelNameBtn').onclick=()=>hideElement('nameInputBox');
+
+document.getElementById('saveNameBtn').onclick=()=>{
+
+  const input=document.getElementById('playerName');const name=input.value.trim();if(name==="") return;
+
+  if(nameRegistered){alert("تم تسجيل اسمك بالفعل ✅");return;}nameRegistered=true;input.value="";
+
+  const existingIndex=leaderboard.findIndex(p=>p.name===name);
+
+  if(existingIndex>=0){if(distance>leaderboard[existingIndex].score) leaderboard[existingIndex].score=distance;}else leaderboard.push({name:name,score:distance});
+
+  leaderboard.sort((a,b)=>b.score-a.score);if(leaderboard.length>20) leaderboard.length=20;localStorage.setItem("leaderboard",JSON.stringify(leaderboard));
+
+  hideElement('nameInputBox');alert("تم حفظ اسمك: "+name+"\nنتيجتك: "+distance+" م ✅");
+
+};
+
+document.getElementById('openLeaderboardGameover').onclick=toggleLeaderboard;
+
+document.getElementById('closeLeaderboard').onclick=()=>hideElement('leaderboardBox');
+
+function toggleLeaderboard(){
+
+  const box = document.getElementById('leaderboardBox');
+
+  const content = document.getElementById('leaderboardContent');
+
+  if(box.style.display==='none'){
+
+    if(leaderboard.length===0){
+
+      content.innerHTML="<b>🏆 لا توجد نتائج بعد.</b>";
+
+    } else {
+
+      let html="<b>🏆 أعلى 20 لاعب:</b><hr>";
+
+      leaderboard.forEach((p,i)=>{
+
+        let color='#000';
+
+        if(i===0) color='gold';
+
+        else if(i===1) color='silver';
+
+        else if(i===2) color='#cd7f32';
+
+        html+=`<span style="color:${color}">${i+1}. ${p.name} - ${p.score} م</span><br>`;
+
+      });
+
+      content.innerHTML = html;
+
+    }
+
+    box.style.display='block';
+
+  } else box.style.display='none';
+
+}
+
+function showElement(id){document.getElementById(id).style.display='block';}
+
+function hideElement(id){document.getElementById(id).style.display='none';}
+
+</script>
+
+</body>
+
+</html>
+    
+  </body>
+  
+</html>
